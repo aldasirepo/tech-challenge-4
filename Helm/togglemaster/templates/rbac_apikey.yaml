@@ -1,0 +1,93 @@
+# 1. A conta de serviço continua no namespace do Job
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Release.Name }}-key-manager
+  namespace: {{ (index .Values "auth-service").namespace }}
+---
+# 2. A Role agora é CLUSTER (vale para o cluster todo)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Name }}job-cross-namespace-role
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "patch", "update"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "patch", "list", "update"]
+---
+# 3. O Binding une a conta do namespace a regra do cluster
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: job-orchestrator-global-binding
+subjects:
+- kind: ServiceAccount
+  name: {{ .Release.Name }}-key-manager
+  namespace: {{ (index .Values "auth-service").namespace }}
+roleRef:
+  kind: ClusterRole
+  name: {{ .Release.Name }}job-cross-namespace-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# 4. Criação do Job
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-sync-key
+  namespace: {{ (index .Values "auth-service").namespace }}
+  annotations:
+    # Garante que só rode após o Helm criar os outros recursos (Deployments, ConfigMaps)
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "10" 
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  template:
+    spec:
+      serviceAccountName: {{ .Release.Name }}-key-manager
+      restartPolicy: OnFailure
+      containers:
+        - name: orchestrator
+          image: bitnami/kubectl:latest
+          env:
+            - name: ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: auth-service-db-secret
+                  key: MASTER_KEY
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              # Aguardando o Auth-Service estar pronto
+              kubectl wait --for=condition=available --timeout=10m deployment/app-auth-service -n auth-service
+
+              # 1. Busca a chave na App Auth (DNS Interno do K8s)
+              echo "Gerando nova chave no Auth Service..."
+              RESPONSE=$(curl -X POST http://app-auth-service.auth-service.svc.cluster.local:8001/admin/keys \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $ADMIN_TOKEN" \
+              -d '{"name": "admin-para-flag-service"}')
+              echo "gerado: $RESPONSE"
+
+              if [ -z "$RESPONSE" ]; then
+                echo "Erro: Não foi possível obter a chave!"
+                exit 1
+              fi
+
+              VALOR_PURO=$(echo $RESPONSE | sed -n 's/.*"key":"\([^"]*\)".*/\1/p')
+              echo "API-KEY gerada: $VALOR_PURO"
+
+              # 2. Injeta o segredo no namespace do Evaluation
+              echo "Injetando segredo no namespace evaluation-service..."
+              kubectl create secret generic shared-api-key \
+                --from-literal=SERVICE_API_KEY="$VALOR_PURO" \
+                --namespace evaluation-service \
+                --dry-run=client -o yaml | kubectl apply -f -
+
+              # 3. Força a App Evaluation a reiniciar para ler o novo valor
+              echo "Reiniciando Deployment para atualizar sessão..."
+              kubectl rollout restart deployment app-evaluation-service -n evaluation-service
+              
+              echo "Processo finalizado com sucesso!"

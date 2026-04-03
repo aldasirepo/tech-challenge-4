@@ -1,0 +1,201 @@
+name: CI/CD for Targeting Service
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - main
+    paths:
+      - 'targeting-service/**'
+
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'targeting-service/**'
+
+env:
+  SERVICE_NAME: targeting-service
+  GITOPS_TOKEN: ${{ secrets.GITOPS_TOKEN }}
+
+jobs:
+  build-test-security:
+    name: Build + Tests
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ${{ env.SERVICE_NAME }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # -----------------------------
+      # Setup Python
+      # -----------------------------
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # -----------------------------
+      # 1. BUILD & UNIT TEST
+      # -----------------------------
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Unit Tests
+        run: |
+          pip install pytest
+          pytest
+
+      # -----------------------------
+      # 2. LINTER - With Black
+      # -----------------------------
+      - name: Format code with Black
+        run: |
+          pip install black
+          black .
+      
+      - name: Run flake8
+        run: |
+          pip install flake8
+          flake8 . --max-line-length=88 --extend-ignore=E203,W503
+
+      # -----------------------------
+      # 3. SCA - Dependency Scan
+      # -----------------------------
+      - name: Run Trivy (SCA - Filesystem)
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: 'fs'
+          scan-ref: ./${{ env.SERVICE_NAME }}
+          severity: 'CRITICAL'
+          exit-code: '1'
+
+      # -----------------------------
+      # 4. SAST - Code Scan
+      # -----------------------------
+      - name: Run Bandit
+        run: |
+          pip install bandit
+          bandit -r .
+
+# ============================================================
+#                     DOCKER SECTION
+# ============================================================
+
+  docker:
+    name: Docker Build + Container Scan
+    runs-on: ubuntu-latest
+    needs: build-test-security
+    outputs:
+      commit_hash: ${{ steps.set_hash.outputs.commit_hash }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # -----------------------------
+      # 5. Docker Build
+      # -----------------------------
+      - name: Build Docker Image
+        run: |
+          IMAGE_NAME=$SERVICE_NAME:${GITHUB_SHA}
+          docker build -t $IMAGE_NAME ./$SERVICE_NAME
+          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+
+      # -----------------------------
+      # 6. Container Scan (Trivy)
+      # -----------------------------
+      - name: Scan Docker Image (Trivy)
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}
+          severity: 'CRITICAL'
+          exit-code: '1'
+
+      # -----------------------------
+      # 7. Configure AWS Credentials
+      # -----------------------------
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # -----------------------------
+      # 8. Login to Amazon ECR
+      # -----------------------------
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # -----------------------------
+      # 9. Tag and Push Docker Image
+      # -----------------------------
+      - name: Tag and Push Image to ECR
+        id: set_hash
+        run: |
+          COMMIT_HASH=${GITHUB_SHA::7}
+
+          ECR_REGISTRY=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+          ECR_REPOSITORY=$SERVICE_NAME
+
+          aws ecr describe-repositories --repository-names $ECR_REPOSITORY --region $AWS_REGION \
+          || aws ecr create-repository --repository-name $ECR_REPOSITORY --region $AWS_REGION
+
+          docker tag $IMAGE_NAME $ECR_REGISTRY/$ECR_REPOSITORY:$COMMIT_HASH
+          docker tag $IMAGE_NAME $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$COMMIT_HASH
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "commit_hash=$COMMIT_HASH" >> $GITHUB_OUTPUT
+
+  gitops:
+    name: Update GitOps Manifests
+    runs-on: ubuntu-latest
+    needs: docker
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITOPS_TOKEN }}
+
+      - name: Update image tag
+        run: |
+          COMMIT_HASH=${{ needs.docker.outputs.commit_hash }}
+          FILE_PATH="Helm/togglemaster/values.yaml"
+        
+          echo "Atualizando imagem do serviço: ${{ env.SERVICE_NAME }}"
+          echo "Arquivo: $FILE_PATH"
+        
+          sed -i "/^${{ env.SERVICE_NAME }}:/,/^[a-zA-Z0-9-]*:/ s|image: .*|image: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ env.SERVICE_NAME }}:$COMMIT_HASH|" $FILE_PATH
+        
+          echo "Resultado:"
+          grep -A 5 "${{ env.SERVICE_NAME }}:" $FILE_PATH
+          cat Helm/togglemaster/values.yaml
+
+      - name: Commit and Push changes
+        run: |
+          COMMIT_HASH=${{ needs.docker.outputs.commit_hash }}
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add Helm/togglemaster/values.yaml
+
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update ${{ env.SERVICE_NAME }} image to $COMMIT_HASH"
+            git pull --rebase origin ${GITHUB_REF_NAME}
+            git push origin HEAD:${GITHUB_REF_NAME}
+          fi

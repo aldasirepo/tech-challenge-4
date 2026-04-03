@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: app-targeting-service
+    {{- include "togglemaster.labels" . | nindent 4 }}
+  name: app-targeting-service
+  namespace: targeting-service
+spec:
+  strategy:
+    type: Recreate
+  replicas: {{ (index .Values "targeting-service").replicas}}
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: app-targeting-service
+  template:
+    metadata:
+      labels:
+        app: app-targeting-service
+    spec:
+      containers:
+        - name: app-targeting-service 
+          image: {{ (index .Values "targeting-service").image }}
+          imagePullPolicy: Always
+          resources:
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+          livenessProbe:
+            httpGet:
+              path: "/health"
+              port: {{ (index .Values "targeting-service").port }}
+          readinessProbe:
+            httpGet:
+              path: "/health"
+              port: {{ (index .Values "targeting-service").port }}
+          envFrom:
+            - secretRef:
+                name: targeting-service-db-secret #Credentials to db login and generics
+            - secretRef:
+                name: targeting-service-db-secret-host #Credential to db login (host)

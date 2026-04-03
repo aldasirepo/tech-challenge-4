@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: app-flag-service
+    {{- include "togglemaster.labels" .| nindent 4 }}
+  name: app-flag-service
+  namespace: flag-service
+spec:
+  strategy:
+    type: Recreate
+  replicas: {{ (index .Values "flag-service").replicas}}
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: app-flag-service
+  template:
+    metadata:
+      labels:
+        app: app-flag-service
+    spec:
+      containers:
+        - name: app-flag-service 
+          image: {{ (index .Values "flag-service").image }}
+          imagePullPolicy: Always
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+          livenessProbe:
+            httpGet:
+              path: "/health"
+              port: {{ (index .Values "flag-service").port }}
+          readinessProbe:
+            httpGet:
+              path: "/health"
+              port: {{ (index .Values "flag-service").port }}
+          envFrom:
+            - secretRef:
+                name: flag-service-db-secret #Credentials to db login and generics
+            - secretRef:
+                name: flag-service-db-secret-host #Credential to db login (host)
+              

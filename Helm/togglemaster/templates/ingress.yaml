@@ -1,0 +1,25 @@
+{{- range $appName, $appConfig := .Values }}
+{{- if and (kindIs "map" $appConfig) (hasKey $appConfig "ingress") }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $appName }}-ingress
+  namespace: {{ $appConfig.namespace }}
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: {{ $appConfig.ingress.path }}
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: app-{{ $appName }}
+                port:
+                  number: {{ $appConfig.port }}
+---
+{{- end }}
+{{- end }}

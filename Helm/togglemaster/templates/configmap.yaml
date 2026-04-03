@@ -1,0 +1,13 @@
+{{- range $appName, $appConfig := .Values }}
+{{- if and (kindIs "map" $appConfig) (hasKey $appConfig "configMap") }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $appConfig.configMap.name }}
+  namespace: {{ $appConfig.namespace }}
+data:
+  init.sql: |
+{{ index $appConfig.configMap "init.sql" | nindent 4 }}
+---
+{{- end }}
+{{- end }}

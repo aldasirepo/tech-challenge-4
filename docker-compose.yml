@@ -1,0 +1,163 @@
+services:
+  # -------------------------
+  # Banco do AUTH-SERVICE
+  # -------------------------
+  auth-db:
+    image: postgres:latest
+    container_name: auth-db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: senha123
+      POSTGRES_DB: auth_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./auth-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - tc-network
+
+  # -------------------------
+  # AUTH SERVICE
+  # -------------------------
+  auth-service:
+    build: ./auth-service
+    container_name: auth-service
+    depends_on:
+      auth-db:
+        condition: service_healthy
+    env_file:
+      - ./auth-service/.env
+    ports:
+      - "8001:8001"
+    networks:
+      - tc-network
+
+  # -------------------------
+  # Banco do FLAG SERVICE
+  # -------------------------
+  flag-db:
+    image: postgres:latest
+    container_name: flag-db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: senha123
+      POSTGRES_DB: flag_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./flag-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - tc-network
+
+  # -------------------------
+  # FLAG SERVICE
+  # -------------------------
+  flag-service:
+    build: ./flag-service
+    container_name: flag-service
+    depends_on:
+      - flag-db
+      - auth-service
+    env_file:
+      - ./flag-service/.env
+    ports:
+      - "8002:8002"
+    networks:
+      - tc-network
+
+  # -------------------------
+  # Banco do TARGETING SERVICE
+  # -------------------------
+  target-db:
+    image: postgres:latest
+    container_name: target-db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: senha123
+      POSTGRES_DB: targeting_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - ./targeting-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - tc-network
+
+  # -------------------------
+  # TARGETING SERVICE
+  # -------------------------
+  targeting-service:
+    build: ./targeting-service
+    container_name: targeting-service
+    depends_on:
+      - target-db
+      - auth-service
+    env_file:
+      - ./targeting-service/.env
+    ports:
+      - "8003:8003"
+    networks:
+      - tc-network
+
+  # -------------------------
+  # REDIS
+  # -------------------------
+  redis:
+    image: redis:7
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+    networks:
+      - tc-network
+
+  # -------------------------
+  # EVALUATION SERVICE
+  # -------------------------
+  evaluation-service:
+    build: ./evaluation-service
+    container_name: evaluation-service
+    depends_on:
+      - redis
+      - flag-service
+      - targeting-service
+    env_file:
+      - ./evaluation-service/.env
+    ports:
+      - "8004:8004"
+    networks:
+      - tc-network
+
+  # -------------------------
+  # ANALYTICS SERVICE
+  # -------------------------
+  analytics-service:
+    build: ./analytics-service
+    container_name: analytics-service
+    depends_on:
+      - redis
+      - flag-service
+      - targeting-service
+      - evaluation-service
+    env_file:
+      - ./analytics-service/.env
+    ports:
+      - "8005:8005"
+    networks:
+      - tc-network
+
+# -------------------------
+# Rede
+# -------------------------
+networks:
+  tc-network:
+    external: true
+
+ # teste para o argocd

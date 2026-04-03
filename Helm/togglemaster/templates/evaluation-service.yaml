@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: app-evaluation-service
+    {{- include "togglemaster.labels" .| nindent 4 }}
+  name: app-evaluation-service
+  namespace: evaluation-service
+spec:
+  strategy:
+    type: Recreate
+  replicas: {{ (index .Values "evaluation-service").replicas}}
+  revisionHistoryLimit: 1
+  selector:
+    matchLabels:
+      app: app-evaluation-service
+  template:
+    metadata:
+      labels:
+        app: app-evaluation-service
+    spec:
+      containers:
+        - name: app-evaluation-service 
+          image: {{ (index .Values "evaluation-service").image }}
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ (index .Values "evaluation-service").port }}
+              scheme: HTTP
+            initialDelaySeconds: 120
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+            successThreshold: 1
+
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ (index .Values "evaluation-service").port }}
+            initialDelaySeconds: 60
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 12
+
+          envFrom:
+            - secretRef:
+                name: evaluation-service-db-secret #Credentials to db login and generics
+            - secretRef:
+                name: evaluation-service-db-secret-host #Credential to db login (host)
+            - secretRef:
+                name: shared-api-key #ApiKey from k8s job
+            
+              
+              

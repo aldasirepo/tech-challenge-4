@@ -1,0 +1,18 @@
+{{- range $appName, $appConfig := .Values }}
+{{- if and (kindIs "map" $appConfig) (hasKey $appConfig "port") }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-{{ $appName }}
+  namespace: {{ default "default" $appConfig.namespace }}
+spec:
+  selector:
+    app: app-{{ $appName }}
+  ports:
+  - name: app-{{ $appName }}
+    port: {{ $appConfig.port }}
+    targetPort: {{ $appConfig.port }}
+  type: ClusterIP
+---
+{{- end }}
+{{- end }}
