@@ -8,6 +8,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Capture current SHA
+        id: sha
+        run: echo "sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
 
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
@@ -15,12 +18,13 @@ jobs:
       - name: Deploy AUTH
         run: |
           WORKFLOW="auth.yml"
+          SHA="${{ steps.sha.outputs.sha }}"
 
           curl -s -X POST \
             -H "Authorization: Bearer ${{ secrets.GITOPS_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
             https://api.github.com/repos/${{ github.repository }}/actions/workflows/$WORKFLOW/dispatches \
-            -d "{\"ref\":\"${GITHUB_REF_NAME}\"}"
+            -d "{\"ref\":\"${{  github.ref_name }}\",\"inputs\":{\"sha\":\"$SHA\"}}"
 
           sleep 10
 
@@ -52,12 +56,13 @@ jobs:
       - name: Deploy FLAG
         run: |
           WORKFLOW="flag.yml"
+          SHA="${{ steps.sha.outputs.sha }}"
 
           curl -s -X POST \
             -H "Authorization: Bearer ${{ secrets.GITOPS_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
             https://api.github.com/repos/${{ github.repository }}/actions/workflows/$WORKFLOW/dispatches \
-            -d "{\"ref\":\"${GITHUB_REF_NAME}\"}"
+            -d "{\"ref\":\"${{  github.ref_name }}\",\"inputs\":{\"sha\":\"$SHA\"}}"
 
           sleep 10
 
@@ -89,12 +94,13 @@ jobs:
       - name: Deploy TARGETING
         run: |
           WORKFLOW="targeting.yml"
+          SHA="${{ steps.sha.outputs.sha }}"
 
           curl -s -X POST \
             -H "Authorization: Bearer ${{ secrets.GITOPS_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
             https://api.github.com/repos/${{ github.repository }}/actions/workflows/$WORKFLOW/dispatches \
-            -d "{\"ref\":\"${GITHUB_REF_NAME}\"}"
+            -d "{\"ref\":\"${{  github.ref_name }}\",\"inputs\":{\"sha\":\"$SHA\"}}"
 
           sleep 10
 
@@ -126,12 +132,13 @@ jobs:
       - name: Deploy EVALUATION
         run: |
           WORKFLOW="evaluation.yml"
+          SHA="${{ steps.sha.outputs.sha }}"
 
           curl -s -X POST \
             -H "Authorization: Bearer ${{ secrets.GITOPS_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
             https://api.github.com/repos/${{ github.repository }}/actions/workflows/$WORKFLOW/dispatches \
-            -d "{\"ref\":\"${GITHUB_REF_NAME}\"}"
+            -d "{\"ref\":\"${{  github.ref_name }}\",\"inputs\":{\"sha\":\"$SHA\"}}"
 
           sleep 10
 
@@ -163,12 +170,13 @@ jobs:
       - name: Deploy ANALYTICS
         run: |
           WORKFLOW="analytics.yml"
+          SHA="${{ steps.sha.outputs.sha }}"
 
           curl -s -X POST \
             -H "Authorization: Bearer ${{ secrets.GITOPS_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
             https://api.github.com/repos/${{ github.repository }}/actions/workflows/$WORKFLOW/dispatches \
-            -d "{\"ref\":\"${GITHUB_REF_NAME}\"}"
+            -d "{\"ref\":\"${{  github.ref_name }}\",\"inputs\":{\"sha\":\"$SHA\"}}"
 
           sleep 10
 
@@ -196,3 +204,4 @@ jobs:
 
             sleep 10
           done
+

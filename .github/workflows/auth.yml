@@ -2,6 +2,12 @@ name: CI/CD for Auth Service
 
 on:
   workflow_dispatch:
+    inputs:
+      sha:
+        description: 'Commit SHA to use for image tag (overrides GITHUB_SHA)'
+        required: false
+        default: ''
+
 
   push:
     branches:
@@ -145,7 +151,8 @@ jobs:
       - name: Tag and Push Image to ECR
         id: set_hash
         run: |
-          COMMIT_HASH=${GITHUB_SHA::7}
+          INPUT_SHA="${{ inputs.sha }}"
+          COMMIT_HASH=${INPUT_SHA:-${GITHUB_SHA::7}}
 
           ECR_REGISTRY=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
           ECR_REPOSITORY=$SERVICE_NAME
