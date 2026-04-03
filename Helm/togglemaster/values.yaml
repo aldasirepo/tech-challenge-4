@@ -3,7 +3,7 @@ auth-service:
   maxSurge: 50%
   maxUnavailable: 0
   replicas: 2
-  image: 251246746789.dkr.ecr.us-east-1.amazonaws.com/auth-service:92f7900
+  image: 251246746789.dkr.ecr.us-east-1.amazonaws.com/auth-service:c2a6a9e
   port: 8001
   ingress: 
     path: /auth-service(/|$)(.*)
