@@ -1,5 +1,5 @@
 # Etapa 1: Build do Go
-FROM golang:1.24-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /app
 
@@ -15,14 +15,13 @@ RUN go build -o evaluation-service .
 
 # Etapa 2: Container final mais leve
 FROM alpine:3.23
-RUN apk update && apk upgrade							 
+RUN apk update && apk upgrade
 
 WORKDIR /app
 
-# Copia o binário e o .env
+# Copia o binário
 COPY --from=builder /app/evaluation-service .
 
 EXPOSE 8004
 
-# Comando padrão ao iniciar o container
 CMD ["./evaluation-service"]
