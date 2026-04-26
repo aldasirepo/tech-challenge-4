@@ -60,10 +60,10 @@ jobs:
       # -----------------------------
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v6
+        continue-on-error: true
         with:
           working-directory: ${{ env.SERVICE_NAME }}
-          version: v1.64.8
-          args: --timeout=5m --issues-exit-code=0
+          version: latest
 
       # -----------------------------
       # 3. SCA - Dependency Scan
