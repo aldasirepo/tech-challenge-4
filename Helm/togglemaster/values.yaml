@@ -13,7 +13,7 @@ flag-service:
   maxSurge: 50%
   maxUnavailable: 0
   replicas: 2
-  image: 251246746789.dkr.ecr.us-east-1.amazonaws.com/flag-service:5782ec7
+  image: 251246746789.dkr.ecr.us-east-1.amazonaws.com/flag-service:fdfde1b
   port: 8002
   ingress: 
     path: /flag-service(/|$)(.*)
@@ -25,7 +25,7 @@ targeting-service:
   maxSurge: 50%
   maxUnavailable: 0
   replicas: 2
-  image: 251246746789.dkr.ecr.us-east-1.amazonaws.com/targeting-service:5782ec7
+  image: 251246746789.dkr.ecr.us-east-1.amazonaws.com/targeting-service:fdfde1b
   port: 8003
   ingress: 
     path: /targeting-service(/|$)(.*)
@@ -46,7 +46,7 @@ analytics-service:
   maxSurge: 50%
   maxUnavailable: 0
   replicas: 2
-  image: 251246746789.dkr.ecr.us-east-1.amazonaws.com/analytics-service:5782ec7
+  image: 251246746789.dkr.ecr.us-east-1.amazonaws.com/analytics-service:fdfde1b
   port: 8005
   ingress: 
     path: /analytics-service(/|$)(.*)
