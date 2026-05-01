@@ -2,10 +2,16 @@ name: Deploy All Services
 
 on:
   workflow_dispatch:
+  repository_dispatch:
+    types: [deploy-all]
 
 jobs:
-  deploy:
+  deploy-parallel:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [auth, flag, targeting, evaluation, analytics]
+      fail-fast: false
 
     steps:
       - name: Capture current SHA
@@ -15,23 +21,25 @@ jobs:
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Deploy AUTH
+      - name: Deploy ${{ matrix.service }}
         run: |
-          WORKFLOW="auth.yml"
+          WORKFLOW="${{ matrix.service }}.yml"
           SHA="${{ steps.sha.outputs.sha }}"
 
           curl -s -X POST \
             -H "Authorization: Bearer ${{ secrets.GITOPS_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
             https://api.github.com/repos/${{ github.repository }}/actions/workflows/$WORKFLOW/dispatches \
-            -d "{\"ref\":\"${{  github.ref_name }}\",\"inputs\":{\"sha\":\"$SHA\"}}"
+            -d "{\"ref\":\"${{ github.ref_name }}\",\"inputs\":{\"sha\":\"$SHA\"}}"
 
-          sleep 10
+          sleep 15
 
           RUN_ID=$(curl -s \
             -H "Authorization: Bearer ${{ secrets.GITOPS_TOKEN }}" \
             "https://api.github.com/repos/${{ github.repository }}/actions/workflows/$WORKFLOW/runs?per_page=1" \
             | jq -r '.workflow_runs[0].id')
+
+          echo "Monitorando run $RUN_ID para ${{ matrix.service }}..."
 
           while true; do
             RESPONSE=$(curl -s \
@@ -41,167 +49,81 @@ jobs:
             STATUS=$(echo $RESPONSE | jq -r '.status')
             CONCLUSION=$(echo $RESPONSE | jq -r '.conclusion')
 
-            echo "AUTH: $STATUS / $CONCLUSION"
+            echo "${{ matrix.service }}: $STATUS / $CONCLUSION"
 
             if [ "$STATUS" == "completed" ]; then
               if [ "$CONCLUSION" != "success" ]; then
+                echo "❌ ${{ matrix.service }} falhou!"
                 exit 1
               fi
+              echo "✅ ${{ matrix.service }} concluído!"
               break
             fi
 
             sleep 10
           done
 
-      - name: Deploy FLAG
+  create-api-key:
+    runs-on: ubuntu-latest
+    needs: deploy-parallel
+
+    steps:
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --name togglemaster-eks --region us-east-1
+
+      - name: Wait for auth-service
         run: |
-          WORKFLOW="flag.yml"
-          SHA="${{ steps.sha.outputs.sha }}"
+          echo "Aguardando auth-service ficar pronto..."
+          kubectl rollout status deployment/app-auth-service -n auth-service --timeout=300s || true
+          sleep 30
 
-          curl -s -X POST \
-            -H "Authorization: Bearer ${{ secrets.GITOPS_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/${{ github.repository }}/actions/workflows/$WORKFLOW/dispatches \
-            -d "{\"ref\":\"${{  github.ref_name }}\",\"inputs\":{\"sha\":\"$SHA\"}}"
-
-          sleep 10
-
-          RUN_ID=$(curl -s \
-            -H "Authorization: Bearer ${{ secrets.GITOPS_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/$WORKFLOW/runs?per_page=1" \
-            | jq -r '.workflow_runs[0].id')
-
-          while true; do
-            RESPONSE=$(curl -s \
-              -H "Authorization: Bearer ${{ secrets.GITOPS_TOKEN }}" \
-              https://api.github.com/repos/${{ github.repository }}/actions/runs/$RUN_ID)
-
-            STATUS=$(echo $RESPONSE | jq -r '.status')
-            CONCLUSION=$(echo $RESPONSE | jq -r '.conclusion')
-
-            echo "FLAG: $STATUS / $CONCLUSION"
-
-            if [ "$STATUS" == "completed" ]; then
-              if [ "$CONCLUSION" != "success" ]; then
-                exit 1
-              fi
-              break
-            fi
-
-            sleep 10
-          done
-
-      - name: Deploy TARGETING
+      - name: Create API Key and Update Evaluation Secret
         run: |
-          WORKFLOW="targeting.yml"
-          SHA="${{ steps.sha.outputs.sha }}"
+          LB_URL=$(kubectl get svc -n ingress-nginx ingress-nginx-controller \
+            -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          echo "Load Balancer: $LB_URL"
 
-          curl -s -X POST \
-            -H "Authorization: Bearer ${{ secrets.GITOPS_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/${{ github.repository }}/actions/workflows/$WORKFLOW/dispatches \
-            -d "{\"ref\":\"${{  github.ref_name }}\",\"inputs\":{\"sha\":\"$SHA\"}}"
+          API_KEY_RESPONSE=$(curl -s -X POST "http://${LB_URL}/auth-service/admin/keys" \
+            -H "Authorization: masterkey123" \
+            -H "Content-Type: application/json" \
+            -d '{"name":"service-key"}')
+          echo "Response: $API_KEY_RESPONSE"
 
-          sleep 10
+          API_KEY=$(echo $API_KEY_RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin).get('key',''))" 2>/dev/null || echo "")
 
-          RUN_ID=$(curl -s \
-            -H "Authorization: Bearer ${{ secrets.GITOPS_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/$WORKFLOW/runs?per_page=1" \
-            | jq -r '.workflow_runs[0].id')
+          if [ -n "$API_KEY" ]; then
+            echo "✅ API Key criada!"
 
-          while true; do
-            RESPONSE=$(curl -s \
-              -H "Authorization: Bearer ${{ secrets.GITOPS_TOKEN }}" \
-              https://api.github.com/repos/${{ github.repository }}/actions/runs/$RUN_ID)
+            kubectl create secret generic shared-api-key \
+              --from-literal=SERVICE_API_KEY="$API_KEY" \
+              -n evaluation-service --dry-run=client -o yaml | kubectl apply -f -
 
-            STATUS=$(echo $RESPONSE | jq -r '.status')
-            CONCLUSION=$(echo $RESPONSE | jq -r '.conclusion')
+            REDIS_URL=$(kubectl get secret evaluation-service-db-secret -n evaluation-service \
+              -o jsonpath='{.data.REDIS_URL}' | base64 -d)
+            SQS_URL=$(kubectl get secret evaluation-service-db-secret -n evaluation-service \
+              -o jsonpath='{.data.AWS_SQS_URL}' | base64 -d)
 
-            echo "TARGETING: $STATUS / $CONCLUSION"
+            kubectl create secret generic evaluation-service-db-secret \
+              --from-literal=REDIS_URL="$REDIS_URL" \
+              --from-literal=FLAG_SERVICE_URL=http://app-flag-service.flag-service.svc.cluster.local:8002 \
+              --from-literal=TARGETING_SERVICE_URL=http://app-targeting-service.targeting-service.svc.cluster.local:8003 \
+              --from-literal=AWS_SQS_URL="$SQS_URL" \
+              --from-literal=AWS_REGION=us-east-1 \
+              --from-literal=SERVICE_API_KEY="$API_KEY" \
+              -n evaluation-service --dry-run=client -o yaml | kubectl apply -f -
 
-            if [ "$STATUS" == "completed" ]; then
-              if [ "$CONCLUSION" != "success" ]; then
-                exit 1
-              fi
-              break
-            fi
-
-            sleep 10
-          done
-
-      - name: Deploy EVALUATION
-        run: |
-          WORKFLOW="evaluation.yml"
-          SHA="${{ steps.sha.outputs.sha }}"
-
-          curl -s -X POST \
-            -H "Authorization: Bearer ${{ secrets.GITOPS_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/${{ github.repository }}/actions/workflows/$WORKFLOW/dispatches \
-            -d "{\"ref\":\"${{  github.ref_name }}\",\"inputs\":{\"sha\":\"$SHA\"}}"
-
-          sleep 10
-
-          RUN_ID=$(curl -s \
-            -H "Authorization: Bearer ${{ secrets.GITOPS_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/$WORKFLOW/runs?per_page=1" \
-            | jq -r '.workflow_runs[0].id')
-
-          while true; do
-            RESPONSE=$(curl -s \
-              -H "Authorization: Bearer ${{ secrets.GITOPS_TOKEN }}" \
-              https://api.github.com/repos/${{ github.repository }}/actions/runs/$RUN_ID)
-
-            STATUS=$(echo $RESPONSE | jq -r '.status')
-            CONCLUSION=$(echo $RESPONSE | jq -r '.conclusion')
-
-            echo "EVALUATION: $STATUS / $CONCLUSION"
-
-            if [ "$STATUS" == "completed" ]; then
-              if [ "$CONCLUSION" != "success" ]; then
-                exit 1
-              fi
-              break
-            fi
-
-            sleep 10
-          done
-
-      - name: Deploy ANALYTICS
-        run: |
-          WORKFLOW="analytics.yml"
-          SHA="${{ steps.sha.outputs.sha }}"
-
-          curl -s -X POST \
-            -H "Authorization: Bearer ${{ secrets.GITOPS_TOKEN }}" \
-            -H "Accept: application/vnd.github+json" \
-            https://api.github.com/repos/${{ github.repository }}/actions/workflows/$WORKFLOW/dispatches \
-            -d "{\"ref\":\"${{  github.ref_name }}\",\"inputs\":{\"sha\":\"$SHA\"}}"
-
-          sleep 10
-
-          RUN_ID=$(curl -s \
-            -H "Authorization: Bearer ${{ secrets.GITOPS_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/$WORKFLOW/runs?per_page=1" \
-            | jq -r '.workflow_runs[0].id')
-
-          while true; do
-            RESPONSE=$(curl -s \
-              -H "Authorization: Bearer ${{ secrets.GITOPS_TOKEN }}" \
-              https://api.github.com/repos/${{ github.repository }}/actions/runs/$RUN_ID)
-
-            STATUS=$(echo $RESPONSE | jq -r '.status')
-            CONCLUSION=$(echo $RESPONSE | jq -r '.conclusion')
-
-            echo "ANALYTICS: $STATUS / $CONCLUSION"
-
-            if [ "$STATUS" == "completed" ]; then
-              if [ "$CONCLUSION" != "success" ]; then
-                exit 1
-              fi
-              break
-            fi
-
-            sleep 10
-          done
-
+            kubectl rollout restart deployment/app-evaluation-service -n evaluation-service
+            echo "✅ Evaluation service atualizado com nova API key!"
+          else
+            echo "⚠️ Não foi possível criar API key automaticamente"
+          fi
