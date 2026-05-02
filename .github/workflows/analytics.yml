@@ -24,6 +24,7 @@ on:
 env:
   SERVICE_NAME: analytics-service
   GITOPS_TOKEN: ${{ secrets.GITOPS_TOKEN }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build-test-security:
@@ -42,7 +43,7 @@ jobs:
       # Setup Python
       # -----------------------------
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v5.5.0
         with:
           python-version: '3.11'
 
