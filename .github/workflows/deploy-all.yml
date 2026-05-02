@@ -93,6 +93,14 @@ jobs:
             -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
           echo "Load Balancer: $LB_URL"
 
+          # Aguarda o Load Balancer ficar acessivel
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://${LB_URL}/auth-service/health" || echo "000")
+            echo "Health check attempt $i: $STATUS"
+            if [ "$STATUS" = "200" ]; then break; fi
+            sleep 15
+          done
+
           API_KEY_RESPONSE=$(curl -s -X POST "http://${LB_URL}/auth-service/admin/keys" \
             -H "Authorization: masterkey123" \
             -H "Content-Type: application/json" \

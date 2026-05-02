@@ -24,6 +24,7 @@ on:
 env:
   SERVICE_NAME: auth-service
   GITOPS_TOKEN: ${{ secrets.GITOPS_TOKEN }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build-test-security:
@@ -207,6 +208,7 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "Update ${{ env.SERVICE_NAME }} image to $COMMIT_HASH"
-            git pull --rebase origin ${GITHUB_REF_NAME}
-            git push origin HEAD:${GITHUB_REF_NAME}
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin ${GITHUB_REF_NAME} &&               git push origin HEAD:${GITHUB_REF_NAME} && break ||               { echo "Push failed, retrying ($i/5)..."; sleep $((i * 5)); }
+            done
           fi
