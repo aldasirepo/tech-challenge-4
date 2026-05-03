@@ -40,7 +40,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: ${{ env.SERVICE_NAME }}/go.mod
 
@@ -60,7 +60,7 @@ jobs:
       # 2. LINTER
       # -----------------------------
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         continue-on-error: true
         with:
           working-directory: ${{ env.SERVICE_NAME }}
@@ -70,7 +70,7 @@ jobs:
       # 3. SCA - Dependency Scan
       # -----------------------------
       - name: Run Trivy (SCA - Filesystem)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           scan-type: 'fs'
           scan-ref: ./${{ env.SERVICE_NAME }}
@@ -124,7 +124,7 @@ jobs:
       # 6. Container Scan (Trivy)
       # -----------------------------
       - name: Scan Docker Image (Trivy)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           image-ref: ${{ env.IMAGE_NAME }}
           severity: 'CRITICAL'
