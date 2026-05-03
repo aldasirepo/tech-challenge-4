@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha1"
 	"encoding/binary"
 	"encoding/json"
@@ -8,9 +9,9 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
-	"os"
 )
 
 const (
@@ -19,9 +20,10 @@ const (
 )
 
 // getDecision é o wrapper principal
-func (a *App) getDecision(userID, flagName string) (bool, error) {
+// Recebe ctx para propagar trace_id nas chamadas HTTP downstream
+func (a *App) getDecision(ctx context.Context, userID, flagName string) (bool, error) {
 	// 1. Obter os dados da flag (do cache ou dos serviços)
-	info, err := a.getCombinedFlagInfo(flagName)
+	info, err := a.getCombinedFlagInfo(ctx, flagName)
 	if err != nil {
 		return false, err
 	}
@@ -31,10 +33,10 @@ func (a *App) getDecision(userID, flagName string) (bool, error) {
 }
 
 // getCombinedFlagInfo busca os dados no Redis, com fallback para os microsserviços
-func (a *App) getCombinedFlagInfo(flagName string) (*CombinedFlagInfo, error) {
+func (a *App) getCombinedFlagInfo(ctx context.Context, flagName string) (*CombinedFlagInfo, error) {
 	cacheKey := fmt.Sprintf("flag_info:%s", flagName)
 
-	// 1. Tentar buscar do Cache (Redis)
+	// 1. Tentar buscar do Cache (Redis) - usa ctx da request
 	val, err := a.RedisClient.Get(ctx, cacheKey).Result()
 	if err == nil {
 		// Cache HIT
@@ -43,13 +45,12 @@ func (a *App) getCombinedFlagInfo(flagName string) (*CombinedFlagInfo, error) {
 			log.Printf("Cache HIT para flag '%s'", flagName)
 			return &info, nil
 		}
-		// Se o unmarshal falhar, trata como cache miss
 		log.Printf("Erro ao desserializar cache para flag '%s': %v", flagName, err)
 	}
-	
+
 	log.Printf("Cache MISS para flag '%s'", flagName)
-	// 2. Cache MISS - Buscar dos serviços
-	info, err := a.fetchFromServices(flagName)
+	// 2. Cache MISS - Buscar dos serviços (passa ctx)
+	info, err := a.fetchFromServices(ctx, flagName)
 	if err != nil {
 		return nil, err
 	}
@@ -57,16 +58,16 @@ func (a *App) getCombinedFlagInfo(flagName string) (*CombinedFlagInfo, error) {
 	// 3. Salvar no Cache
 	jsonData, err := json.Marshal(info)
 	if err == nil {
-	    if err := a.RedisClient.Set(ctx, cacheKey, jsonData, CACHE_TTL).Err(); err != nil {
-	        log.Printf("Erro ao salvar flag '%s' no Redis: %v", flagName, err)
-	    }
+		if err := a.RedisClient.Set(ctx, cacheKey, jsonData, CACHE_TTL).Err(); err != nil {
+			log.Printf("Erro ao salvar flag '%s' no Redis: %v", flagName, err)
+		}
 	}
 
 	return info, nil
 }
 
 // fetchFromServices busca dados do flag-service e targeting-service concorrentemente
-func (a *App) fetchFromServices(flagName string) (*CombinedFlagInfo, error) {
+func (a *App) fetchFromServices(ctx context.Context, flagName string) (*CombinedFlagInfo, error) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
@@ -77,13 +78,13 @@ func (a *App) fetchFromServices(flagName string) (*CombinedFlagInfo, error) {
 	// Goroutine 1: Buscar do flag-service
 	go func() {
 		defer wg.Done()
-		flagInfo, flagErr = a.fetchFlag(flagName)
+		flagInfo, flagErr = a.fetchFlag(ctx, flagName)
 	}()
 
 	// Goroutine 2: Buscar do targeting-service
 	go func() {
 		defer wg.Done()
-		ruleInfo, ruleErr = a.fetchRule(flagName)
+		ruleInfo, ruleErr = a.fetchRule(ctx, flagName)
 	}()
 
 	wg.Wait()
@@ -101,14 +102,18 @@ func (a *App) fetchFromServices(flagName string) (*CombinedFlagInfo, error) {
 	}, nil
 }
 
-// fetchFlag (função helper)
-func (a *App) fetchFlag(flagName string) (*Flag, error) {
+// fetchFlag busca uma flag do flag-service propagando o trace via context
+func (a *App) fetchFlag(ctx context.Context, flagName string) (*Flag, error) {
 	url := fmt.Sprintf("%s/flags/%s", a.FlagServiceURL, flagName)
 
 	apiKey := os.Getenv("SERVICE_API_KEY")
-	req, _ := http.NewRequest("GET", url, nil)
+	// http.NewRequestWithContext propaga ctx - otelhttp.Transport injeta header traceparent
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao criar request: %w", err)
+	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
-	
+
 	resp, err := a.HttpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao chamar flag-service: %w", err)
@@ -130,12 +135,17 @@ func (a *App) fetchFlag(flagName string) (*Flag, error) {
 	return &flag, nil
 }
 
-func (a *App) fetchRule(flagName string) (*TargetingRule, error) {
+// fetchRule busca uma regra do targeting-service propagando o trace via context
+func (a *App) fetchRule(ctx context.Context, flagName string) (*TargetingRule, error) {
 	url := fmt.Sprintf("%s/rules/%s", a.TargetingServiceURL, flagName)
-	apiKey := os.Getenv("SERVICE_API_KEY") // Usa a mesma chave
-	req, _ := http.NewRequest("GET", url, nil)
+	apiKey := os.Getenv("SERVICE_API_KEY")
+	// http.NewRequestWithContext propaga ctx - otelhttp.Transport injeta header traceparent
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao criar request: %w", err)
+	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
-	
+
 	resp, err := a.HttpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao chamar targeting-service: %w", err)
@@ -143,7 +153,7 @@ func (a *App) fetchRule(flagName string) (*TargetingRule, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, &NotFoundError{flagName} // Não é um erro fatal
+		return nil, &NotFoundError{flagName}
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("targeting-service retornou status %d", resp.StatusCode)
@@ -167,19 +177,17 @@ func (a *App) runEvaluationLogic(info *CombinedFlagInfo, userID string) bool {
 		return true
 	}
 
-	// 3. Processa a regra (só temos "PERCENTAGE" por enquanto)
+	// Processa a regra (só temos "PERCENTAGE" por enquanto)
 	rule := info.Rule.Rules
 	if rule.Type == "PERCENTAGE" {
-		// Converte o 'value' (que é interface{}) para float64
 		percentage, ok := rule.Value.(float64)
 		if !ok {
 			log.Printf("Erro: valor da regra de porcentagem não é um número para a flag '%s'", info.Flag.Name)
 			return false
 		}
-		
-		// Calcula o "bucket" do usuário (0-99)
+
 		userBucket := getDeterministicBucket(userID + info.Flag.Name)
-		
+
 		if float64(userBucket) < percentage {
 			return true
 		}
@@ -189,16 +197,11 @@ func (a *App) runEvaluationLogic(info *CombinedFlagInfo, userID string) bool {
 }
 
 func getDeterministicBucket(input string) int {
-	// Usamos SHA1 (rápido) e pegamos os primeiros 4 bytes
 	hasher := sha1.New()
 	hasher.Write([]byte(input))
 	hash := hasher.Sum(nil)
-	
-	// Converte 4 bytes para um uint32
+
 	val := binary.BigEndian.Uint32(hash[:4])
-	
-	// Retorna o módulo 100
+
 	return int(val % 100)
 }
-
-

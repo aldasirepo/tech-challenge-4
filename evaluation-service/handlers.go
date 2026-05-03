@@ -16,12 +16,15 @@ func (a *App) healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
-    log.Printf("Erro ao retornar health check: %v", err)
+		log.Printf("Erro ao retornar health check: %v", err)
 	}
 }
 
 func (a *App) evaluationHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	// Extrai o context.Context da request - contém o trace_id propagado pelo otelhttp middleware
+	ctx := r.Context()
 
 	// 1. Parsear os query parameters
 	userID := r.URL.Query().Get("user_id")
@@ -32,8 +35,8 @@ func (a *App) evaluationHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Obter a decisão (lógica de cache/serviço está em evaluator.go)
-	result, err := a.getDecision(userID, flagName)
+	// 2. Obter a decisão (passa ctx para propagar trace pelas chamadas HTTP)
+	result, err := a.getDecision(ctx, userID, flagName)
 	if err != nil {
 		// Se o erro for "não encontrado", retornamos 'false' (comportamento seguro)
 		if _, ok := err.(*NotFoundError); ok {
@@ -47,17 +50,15 @@ func (a *App) evaluationHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Enviar evento para SQS (assincronamente)
-	// Isso não bloqueia a resposta para o cliente.
 	go a.sendEvaluationEvent(userID, flagName, result)
 
 	// 4. Retornar a resposta
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(EvaluationResponse{
-	    FlagName: flagName,
-	    UserID:   userID,
-	    Result:   result,
+		FlagName: flagName,
+		UserID:   userID,
+		Result:   result,
 	}); err != nil {
-	    log.Printf("Erro ao retornar avaliação da flag '%s' para usuário '%s': %v", flagName, userID, err)
+		log.Printf("Erro ao retornar avaliação da flag '%s' para usuário '%s': %v", flagName, userID, err)
 	}
-
 }
