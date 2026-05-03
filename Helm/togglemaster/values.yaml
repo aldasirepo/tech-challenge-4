@@ -3,7 +3,7 @@ auth-service:
   maxSurge: 50%
   maxUnavailable: 0
   replicas: 2
-  image: 251246746789.dkr.ecr.us-east-1.amazonaws.com/auth-service:c10c1bf
+  image: 251246746789.dkr.ecr.us-east-1.amazonaws.com/auth-service:d87dec0
   port: 8001
   ingress: 
     path: /auth-service(/|$)(.*)
@@ -13,7 +13,7 @@ flag-service:
   maxSurge: 50%
   maxUnavailable: 0
   replicas: 2
-  image: 251246746789.dkr.ecr.us-east-1.amazonaws.com/flag-service:c10c1bf
+  image: 251246746789.dkr.ecr.us-east-1.amazonaws.com/flag-service:d87dec0
   port: 8002
   ingress: 
     path: /flag-service(/|$)(.*)
@@ -25,7 +25,7 @@ targeting-service:
   maxSurge: 50%
   maxUnavailable: 0
   replicas: 2
-  image: 251246746789.dkr.ecr.us-east-1.amazonaws.com/targeting-service:c10c1bf
+  image: 251246746789.dkr.ecr.us-east-1.amazonaws.com/targeting-service:d87dec0
   port: 8003
   ingress: 
     path: /targeting-service(/|$)(.*)
@@ -36,7 +36,7 @@ evaluation-service:
   maxSurge: 50%
   maxUnavailable: 0
   replicas: 2
-  image: 251246746789.dkr.ecr.us-east-1.amazonaws.com/evaluation-service:c10c1bf
+  image: 251246746789.dkr.ecr.us-east-1.amazonaws.com/evaluation-service:d87dec0
   port: 8004
   ingress: 
     path: /evaluation-service(/|$)(.*)
@@ -46,7 +46,7 @@ analytics-service:
   maxSurge: 50%
   maxUnavailable: 0
   replicas: 2
-  image: 251246746789.dkr.ecr.us-east-1.amazonaws.com/analytics-service:c10c1bf
+  image: 251246746789.dkr.ecr.us-east-1.amazonaws.com/analytics-service:d87dec0
   port: 8005
   ingress: 
     path: /analytics-service(/|$)(.*)
