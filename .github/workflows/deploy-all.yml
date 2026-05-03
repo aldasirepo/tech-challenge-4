@@ -94,17 +94,21 @@ jobs:
           echo "Load Balancer: $LB_URL"
 
           # Aguarda o Load Balancer ficar acessivel
-          for i in 1 2 3 4 5 6 7 8 9 10; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://${LB_URL}/auth-service/health" || echo "000")
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 "http://${LB_URL}/auth-service/health" 2>/dev/null || echo "000")
             echo "Health check attempt $i: $STATUS"
-            if [ "$STATUS" = "200" ]; then break; fi
-            sleep 15
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ Auth service disponivel!"
+              break
+            fi
+            echo "Aguardando... ($i/15)"
+            sleep 20
           done
 
-          API_KEY_RESPONSE=$(curl -s -X POST "http://${LB_URL}/auth-service/admin/keys" \
+          API_KEY_RESPONSE=$(curl -s --connect-timeout 10 --max-time 30 -X POST "http://${LB_URL}/auth-service/admin/keys" \
             -H "Authorization: masterkey123" \
             -H "Content-Type: application/json" \
-            -d '{"name":"service-key"}')
+            -d '{"name":"service-key"}' || echo "{}")
           echo "Response: $API_KEY_RESPONSE"
 
           API_KEY=$(echo $API_KEY_RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin).get('key',''))" 2>/dev/null || echo "")
