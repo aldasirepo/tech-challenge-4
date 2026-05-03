@@ -36,7 +36,7 @@ evaluation-service:
   maxSurge: 50%
   maxUnavailable: 0
   replicas: 2
-  image: 251246746789.dkr.ecr.us-east-1.amazonaws.com/evaluation-service:735cc2d
+  image: 251246746789.dkr.ecr.us-east-1.amazonaws.com/evaluation-service:1611d20
   port: 8004
   ingress: 
     path: /evaluation-service(/|$)(.*)
