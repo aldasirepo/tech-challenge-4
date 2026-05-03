@@ -60,11 +60,12 @@ jobs:
       # 2. LINTER
       # -----------------------------
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v8
         continue-on-error: true
         with:
           working-directory: ${{ env.SERVICE_NAME }}
           version: v2.1.6
+          skip-cache: true
 
       # -----------------------------
       # 3. SCA - Dependency Scan
