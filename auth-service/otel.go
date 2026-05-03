@@ -18,7 +18,7 @@ import (
 func initOtel(serviceName string) func() {
 	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 	if endpoint == "" {
-		endpoint = "otel-collector.monitoring.svc.cluster.local:4317"
+		endpoint = "otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4317"
 	}
 
 	ctx := context.Background()
