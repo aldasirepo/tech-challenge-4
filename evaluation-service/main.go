@@ -30,6 +30,10 @@ type App struct {
 func main() {
 	_ = godotenv.Load() // Carrega .env para dev local
 
+	// --- Inicializa OpenTelemetry ---
+	shutdown := initOtel("evaluation-service")
+	defer shutdown()
+
 	// --- Configuração ---
 	port := os.Getenv("PORT")
 	if port == "" {

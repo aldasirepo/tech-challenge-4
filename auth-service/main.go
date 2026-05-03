@@ -21,6 +21,10 @@ func main() {
 	// Carrega o .env para desenvolvimento local. Em produção, isso não fará nada.
 	_ = godotenv.Load()
 
+	// --- Inicializa OpenTelemetry ---
+	shutdown := initOtel("auth-service")
+	defer shutdown()
+
 	// --- Configuração ---
 	port := os.Getenv("PORT")
 	if port == "" {
