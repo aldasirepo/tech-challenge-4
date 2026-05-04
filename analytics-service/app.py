@@ -19,6 +19,15 @@ log = logging.getLogger(__name__)
 # Carrega .env para desenvolvimento local
 load_dotenv()
 
+# --- OpenTelemetry ---
+# Inicializa ANTES de criar clientes boto3 e o app Flask
+from otel_setup import setup_otel
+from opentelemetry.instrumentation.flask import FlaskInstrumentor
+from opentelemetry.instrumentation.botocore import BotocoreInstrumentor
+
+setup_otel("analytics-service")
+BotocoreInstrumentor().instrument()
+
 # --- Configuração ---
 AWS_REGION = os.getenv("AWS_REGION")
 SQS_QUEUE_URL = os.getenv("AWS_SQS_URL")
@@ -117,6 +126,7 @@ def sqs_worker_loop():
 
 # --- Servidor Flask (Apenas para Health Check) ---
 app = Flask(__name__)
+FlaskInstrumentor().instrument_app(app)
 
 
 @app.route("/health")
