@@ -21,9 +21,9 @@ load_dotenv()
 
 # --- OpenTelemetry ---
 # Inicializa ANTES de criar clientes boto3 e o app Flask
-from otel_setup import setup_otel
-from opentelemetry.instrumentation.flask import FlaskInstrumentor
-from opentelemetry.instrumentation.botocore import BotocoreInstrumentor
+from otel_setup import setup_otel  # noqa: E402
+from opentelemetry.instrumentation.flask import FlaskInstrumentor  # noqa: E402
+from opentelemetry.instrumentation.botocore import BotocoreInstrumentor  # noqa: E402
 
 setup_otel("analytics-service")
 BotocoreInstrumentor().instrument()

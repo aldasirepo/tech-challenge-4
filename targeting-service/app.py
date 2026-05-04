@@ -18,10 +18,10 @@ log = logging.getLogger(__name__)
 load_dotenv()
 
 # --- OpenTelemetry ---
-from otel_setup import setup_otel
-from opentelemetry.instrumentation.flask import FlaskInstrumentor
-from opentelemetry.instrumentation.requests import RequestsInstrumentor
-from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor
+from otel_setup import setup_otel  # noqa: E402
+from opentelemetry.instrumentation.flask import FlaskInstrumentor  # noqa: E402
+from opentelemetry.instrumentation.requests import RequestsInstrumentor  # noqa: E402
+from opentelemetry.instrumentation.psycopg2 import Psycopg2Instrumentor  # noqa: E402
 
 setup_otel("targeting-service")
 
