@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 
 load_dotenv()
 
-# --- Configuração ---
+# --- Configuracao ---
 AWS_REGION = os.getenv("AWS_REGION")
 SQS_QUEUE_URL = os.getenv("AWS_SQS_URL")
 DYNAMODB_TABLE_NAME = os.getenv("AWS_DYNAMODB_TABLE")
@@ -40,15 +40,15 @@ try:
     session = boto3.Session(region_name=AWS_REGION)
     sqs_client = session.client("sqs")
     dynamodb_client = session.client("dynamodb")
-    log.info(f"Clientes Boto3 inicializados na região {AWS_REGION}")
+    log.info(f"Clientes Boto3 inicializados na regiao {AWS_REGION}")
 except Exception as e:
     log.critical(f"Erro ao inicializar o Boto3: {e}")
     sys.exit(1)
 
 def process_message(message):
-    """Processa uma única mensagem SQS e a insere no DynamoDB."""
+    """Processa uma mensagem SQS e insere no DynamoDB."""
     try:
-        # Extrai o rastro vindo do Go através dos atributos da mensagem
+        # Extracao de contexto: Recupera o rastro vindo do Go pelos atributos
         attributes = message.get("MessageAttributes", {})
         carrier = {k: v["StringValue"] for k, v in attributes.items()}
         context = propagate.extract(carrier)
@@ -77,9 +77,10 @@ def sqs_worker_loop():
     log.info("Iniciando o worker SQS...")
     while True:
         try:
+            # Necessario 'MessageAttributeNames' para ler o Trace ID
             response = sqs_client.receive_message(
                 QueueUrl=SQS_QUEUE_URL, MaxNumberOfMessages=10, WaitTimeSeconds=20,
-                MessageAttributeNames=['All'] # Necessário para ler o Trace ID
+                MessageAttributeNames=['All']
             )
             messages = response.get("Messages", [])
             for message in messages:
