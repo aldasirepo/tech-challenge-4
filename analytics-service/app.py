@@ -101,5 +101,5 @@ start_worker()
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8005))
-    # O comentário # nosec: B104 silencia o alerta de seguranca do Bandit
-    app.run(host="0.0.0.0", port=port, debug=False)  # nosec: B104
+    # nosec: B104 silencia o alerta de seguranca do Bandit para o binding 0.0.0.0
+    app.run(host="0.0.0.0", port=port, debug=False) # nosec: B104
