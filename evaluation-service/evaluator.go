@@ -6,14 +6,14 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"sync"
 	"time"
-	"go.opentelemetry.io/otel/attribute"
-    "go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -114,9 +114,9 @@ func (a *App) fetchFlag(ctx context.Context, flagName string) (*Flag, error) {
 	if err != nil {
 		return nil, fmt.Errorf("erro ao criar request: %v", err)
 	}
-	// Seta peer.service para o Datadog mapear corretamente no Service Map
+	// Set peer.service for Datadog Service Map
 	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(attribute.String("peer.service", "targeting-service"))
+	span.SetAttributes(attribute.String("peer.service", "flag-service"))
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	resp, err := a.HttpClient.Do(req)
@@ -149,9 +149,9 @@ func (a *App) fetchRule(ctx context.Context, flagName string) (*TargetingRule, e
 	if err != nil {
 		return nil, fmt.Errorf("erro ao criar request: %v", err)
 	}
-	// Seta peer.service para o Datadog mapear corretamente no Service Map
+	// Set peer.service for Datadog Service Map
 	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(attribute.String("peer.service", "targeting-service"))
+	span.SetAttributes(attribute.String("peer.service", "flag-service"))
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	resp, err := a.HttpClient.Do(req)

@@ -7,7 +7,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	"go.opentelemetry.io/otel/propagation" // <- Nova importação adicionada
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -47,8 +47,7 @@ func initOtel(serviceName string) func() {
 	)
 	otel.SetMeterProvider(mp)
 
-	// ADIÇÃO PARA O DATADOG SERVICE MAP FUNCIONAR:
-	// Configura o propagador global para injetar/extrair o contexto (Trace ID) nos cabeçalhos HTTP
+	// Set global propagator for context injection (Trace ID)
 	propagator := propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{})
 	otel.SetTextMapPropagator(propagator)
 
