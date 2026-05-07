@@ -1,15 +1,15 @@
 package main
 
 import (
-	"context" // Adicionado
+	"context"
 	"encoding/json"
 	"log"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/sqs"
-	"go.opentelemetry.io/otel" // Adicionado
-	"go.opentelemetry.io/otel/propagation" // Adicionado
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 type EvaluationEvent struct {
@@ -19,7 +19,6 @@ type EvaluationEvent struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// Alterado para receber ctx (context.Context)
 func (a *App) sendEvaluationEvent(ctx context.Context, userID, flagName string, result bool) {
 	if a.SqsSvc == nil || a.SqsQueueURL == "" {
 		log.Printf("[SQS_DISABLED] Evento: User '%s', Flag '%s', Result '%t'", userID, flagName, result)
@@ -35,25 +34,29 @@ func (a *App) sendEvaluationEvent(ctx context.Context, userID, flagName string, 
 
 	body, err := json.Marshal(event)
 	if err != nil {
+		log.Printf("Erro ao serializar evento SQS: %v", err)
 		return
 	}
 
-	// INJECAO DE CONTEXTO: Prepara os atributos da mensagem com o Trace ID
+	// Injeta o rastro (trace) nos atributos da mensagem usando MapCarrier
 	messageAttributes := make(map[string]*sqs.MessageAttributeValue)
-	otel.GetTextMapPropagator().Inject(ctx, propagation.MapEntries(func(k, v string) {
+	carrier := make(map[string]string)
+	otel.GetTextMapPropagator().Inject(ctx, propagation.MapCarrier(carrier))
+
+	for k, v := range carrier {
 		messageAttributes[k] = &sqs.MessageAttributeValue{
 			DataType:    aws.String("String"),
 			StringValue: aws.String(v),
 		}
-	}))
+	}
 
 	_, err = a.SqsSvc.SendMessage(&sqs.SendMessageInput{
 		MessageBody:       aws.String(string(body)),
 		QueueUrl:          aws.String(a.SqsQueueURL),
-		MessageAttributes: messageAttributes, // Enviamos os atributos aqui
+		MessageAttributes: messageAttributes,
 	})
 
 	if err != nil {
-		log.Printf("Erro ao enviar para SQS: %v", err)
+		log.Printf("Erro ao enviar mensagem para SQS: %v", err)
 	}
 }

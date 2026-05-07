@@ -9,35 +9,30 @@ import boto3
 from botocore.exceptions import NoCredentialsError, ClientError
 from flask import Flask, jsonify
 from dotenv import load_dotenv
-from opentelemetry import propagate # Adicionado
-
-# Configura o logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
-log = logging.getLogger(__name__)
-
-# Carrega .env para desenvolvimento local
-load_dotenv()
 
 # --- OpenTelemetry ---
-# Inicializa ANTES de criar clientes boto3 e o app Flask
-from otel_setup import setup_otel  # noqa: E402
-from opentelemetry.instrumentation.flask import FlaskInstrumentor  # noqa: E402
-from opentelemetry.instrumentation.botocore import BotocoreInstrumentor  # noqa: E402
+from opentelemetry import trace, propagate
+from otel_setup import setup_otel 
+from opentelemetry.instrumentation.flask import FlaskInstrumentor 
+from opentelemetry.instrumentation.botocore import BotocoreInstrumentor 
 
 setup_otel("analytics-service")
 BotocoreInstrumentor().instrument()
+tracer = trace.get_tracer("analytics-service")
 
-# --- Configuração ---
+# Configura o logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+log = logging.getLogger(__name__)
+
+load_dotenv()
+
+# --- Configura��o ---
 AWS_REGION = os.getenv("AWS_REGION")
 SQS_QUEUE_URL = os.getenv("AWS_SQS_URL")
 DYNAMODB_TABLE_NAME = os.getenv("AWS_DYNAMODB_TABLE")
 
 if not all([AWS_REGION, SQS_QUEUE_URL, DYNAMODB_TABLE_NAME]):
-    log.critical(
-        "Erro: AWS_REGION, AWS_SQS_URL, e AWS_DYNAMODB_TABLE devem ser definidos."
-    )
+    log.critical("Erro: AWS_REGION, AWS_SQS_URL, e AWS_DYNAMODB_TABLE devem ser definidos.")
     sys.exit(1)
 
 # --- Clientes Boto3 ---
@@ -45,31 +40,24 @@ try:
     session = boto3.Session(region_name=AWS_REGION)
     sqs_client = session.client("sqs")
     dynamodb_client = session.client("dynamodb")
-    log.info(f"Clientes Boto3 inicializados na região {AWS_REGION}")
-except NoCredentialsError:
-    log.critical("Credenciais da AWS não encontradas. Verifique seu ambiente.")
-    sys.exit(1)
+    log.info(f"Clientes Boto3 inicializados na regi�o {AWS_REGION}")
 except Exception as e:
     log.critical(f"Erro ao inicializar o Boto3: {e}")
     sys.exit(1)
 
-
-# --- SQS Worker ---
-
-
 def process_message(message):
+    """Processa uma �nica mensagem SQS e a insere no DynamoDB."""
     try:
-        # EXTRACAO DE CONTEXTO: Recupera o rastro vindo do Go
+        # Extrai o rastro vindo do Go atrav�s dos atributos da mensagem
         attributes = message.get("MessageAttributes", {})
         carrier = {k: v["StringValue"] for k, v in attributes.items()}
         context = propagate.extract(carrier)
 
-        # Inicia o span dentro do rastro correto
         with tracer.start_as_current_span("process_sqs_message", context=context):
             log.info(f"Processando mensagem ID: {message['MessageId']}")
             body = json.loads(message["Body"])
-
             event_id = str(uuid.uuid4())
+
             item = {
                 "event_id": {"S": event_id},
                 "user_id": {"S": body["user_id"]},
@@ -81,76 +69,37 @@ def process_message(message):
             dynamodb_client.put_item(TableName=DYNAMODB_TABLE_NAME, Item=item)
             log.info(f"Evento {event_id} salvo no DynamoDB.")
 
-            sqs_client.delete_message(
-                QueueUrl=SQS_QUEUE_URL, ReceiptHandle=message["ReceiptHandle"]
-            )
+            sqs_client.delete_message(QueueUrl=SQS_QUEUE_URL, ReceiptHandle=message["ReceiptHandle"])
     except Exception as e:
-        log.error(f"Erro ao processar {message['MessageId']}: {e}")
-
-    except json.JSONDecodeError:
-        log.error(f"Erro ao decodificar JSON da mensagem ID: {message['MessageId']}")
-        # Não deleta a mensagem, pode ser uma "poison pill"
-    except ClientError as e:
-        log.error(
-            f"Erro do Boto3 (DynamoDB ou SQS) ao processar {message['MessageId']}: {e}"
-        )
-        # Não deleta a mensagem, tenta novamente
-    except Exception as e:
-        log.error(f"Erro inesperado ao processar {message['MessageId']}: {e}")
-        # Não deleta a mensagem, tenta novamente
-
+        log.error(f"Erro ao processar {message.get('MessageId')}: {e}")
 
 def sqs_worker_loop():
-    """Loop principal do worker que ouve a fila SQS."""
     log.info("Iniciando o worker SQS...")
     while True:
         try:
-            # Long-polling: espera até 20s por mensagens
             response = sqs_client.receive_message(
-                QueueUrl=SQS_QUEUE_URL, MaxNumberOfMessages=10, WaitTimeSeconds=20
+                QueueUrl=SQS_QUEUE_URL, MaxNumberOfMessages=10, WaitTimeSeconds=20,
+                MessageAttributeNames=['All'] # Necess�rio para ler o Trace ID
             )
-
             messages = response.get("Messages", [])
-            if not messages:
-                continue
-
-            log.info(f"Recebidas {len(messages)} mensagens.")
-
             for message in messages:
                 process_message(message)
-
-        except ClientError as e:
-            log.error(f"Erro do Boto3 no loop principal do SQS: {e}")
-            time.sleep(10)  # Pausa antes de tentar novamente
         except Exception as e:
-            log.error(f"Erro inesperado no loop principal do SQS: {e}")
+            log.error(f"Erro no loop SQS: {e}")
             time.sleep(10)
 
-
-# --- Servidor Flask (Apenas para Health Check) ---
 app = Flask(__name__)
 FlaskInstrumentor().instrument_app(app)
 
-
 @app.route("/health")
 def health():
-    """Uma verificação de saúde real poderia checar a conexão com DynamoDB/SQS."""
     return jsonify({"status": "ok"})
 
-
-# --- Inicialização ---
-
-
 def start_worker():
-    """Inicia o worker SQS em uma thread separada."""
-    worker_thread = threading.Thread(target=sqs_worker_loop, daemon=True)
-    worker_thread.start()
+    threading.Thread(target=sqs_worker_loop, daemon=True).start()
 
-
-# Inicia o worker SQS em uma thread de background
-# Isso garante que ele inicie tanto com 'flask run' quanto com 'gunicorn'
 start_worker()
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8005))
-    app.run(host="0.0.0.0", port=port, debug=False)  # nosec: B104
+    app.run(host="0.0.0.0", port=port, debug=False)

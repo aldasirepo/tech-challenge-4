@@ -50,7 +50,7 @@ func (a *App) evaluationHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Enviar evento para SQS (assincronamente)
-	go a.sendEvaluationEvent(userID, flagName, result)
+	go a.sendEvaluationEvent(ctx, userID, flagName, result)
 
 	// 4. Retornar a resposta
 	w.WriteHeader(http.StatusOK)
