@@ -6,7 +6,6 @@ import uuid
 import time
 import logging
 import boto3
-from botocore.exceptions import NoCredentialsError, ClientError
 from flask import Flask, jsonify
 from dotenv import load_dotenv
 
@@ -32,7 +31,7 @@ SQS_QUEUE_URL = os.getenv("AWS_SQS_URL")
 DYNAMODB_TABLE_NAME = os.getenv("AWS_DYNAMODB_TABLE")
 
 if not all([AWS_REGION, SQS_QUEUE_URL, DYNAMODB_TABLE_NAME]):
-    log.critical("Erro: AWS_REGION, AWS_SQS_URL, e AWS_DYNAMODB_TABLE devem ser definidos.")
+    log.critical("Erro: AWS_REGION, SQS_URL e DYNAMODB_TABLE devem ser definidos.")
     sys.exit(1)
 
 # --- Clientes Boto3 ---
@@ -48,7 +47,7 @@ except Exception as e:
 def process_message(message):
     """Processa uma mensagem SQS e insere no DynamoDB."""
     try:
-        # Extracao de contexto: Recupera o rastro vindo do Go pelos atributos
+        # Extracao de contexto para o rastro distribuido
         attributes = message.get("MessageAttributes", {})
         carrier = {k: v["StringValue"] for k, v in attributes.items()}
         context = propagate.extract(carrier)
@@ -77,7 +76,6 @@ def sqs_worker_loop():
     log.info("Iniciando o worker SQS...")
     while True:
         try:
-            # Necessario 'MessageAttributeNames' para ler o Trace ID
             response = sqs_client.receive_message(
                 QueueUrl=SQS_QUEUE_URL, MaxNumberOfMessages=10, WaitTimeSeconds=20,
                 MessageAttributeNames=['All']
