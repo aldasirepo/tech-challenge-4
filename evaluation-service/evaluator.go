@@ -116,7 +116,7 @@ func (a *App) fetchFlag(ctx context.Context, flagName string) (*Flag, error) {
 	}
 	// Seta peer.service para o Datadog mapear corretamente no Service Map
 	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(attribute.String("peer.service", "flag-service"))
+	span.SetAttributes(attribute.String("peer.service", "targeting-service"))
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	resp, err := a.HttpClient.Do(req)
@@ -151,7 +151,7 @@ func (a *App) fetchRule(ctx context.Context, flagName string) (*TargetingRule, e
 	}
 	// Seta peer.service para o Datadog mapear corretamente no Service Map
 	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(attribute.String("peer.service", "flag-service"))
+	span.SetAttributes(attribute.String("peer.service", "targeting-service"))
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	resp, err := a.HttpClient.Do(req)
