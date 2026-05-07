@@ -1,7 +1,7 @@
 import os
 from opentelemetry import trace, metrics
 from opentelemetry.propagate import set_global_textmap
-from opentelemetry.trace.propagation.tracecontext import TraceContextPropagator
+from opentelemetry.propagators.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics import MeterProvider
@@ -42,6 +42,6 @@ def setup_otel(service_name: str):
     metrics.set_meter_provider(meter_provider)
 
     # Ativa a propagacao de contexto
-    set_global_textmap(TraceContextPropagator())
+    set_global_textmap(TraceContextTextMapPropagator())
 
     return trace.get_tracer(service_name)
