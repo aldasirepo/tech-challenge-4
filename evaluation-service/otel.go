@@ -33,7 +33,9 @@ func initOtel(serviceName string) func() {
 		semconv.DeploymentEnvironment("prod"),
 	)
 
-	traceExp, _ := otlptracegrpc.New(ctx, otlptracegrpc.NewConfig(otlptracegrpc.WithGRPCConn(conn)))
+	// Corrected line: removed NewConfig wrapper
+	traceExp, _ := otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
+
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(traceExp),
 		sdktrace.WithResource(res),
@@ -47,6 +49,7 @@ func initOtel(serviceName string) func() {
 	)
 	otel.SetMeterProvider(mp)
 
+	// Set global propagator for context injection (Trace ID)
 	propagator := propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{})
 	otel.SetTextMapPropagator(propagator)
 
