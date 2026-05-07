@@ -17,20 +17,21 @@ def setup_otel(service_name: str):
         ResourceAttributes.DEPLOYMENT_ENVIRONMENT: os.getenv("ENV", "prod"),
     })
 
-    # Quebra de linha para satisfazer o linter (E501)
+    # IMPORTANTE: Removido o http:// pois o gRPC espera apenas o host:porta
     url_default = (
-        "http://otel-collector-opentelemetry-collector"
+        "otel-collector-opentelemetry-collector"
         ".monitoring.svc.cluster.local:4317"
     )
+    # Garante o uso de os.getenv (minusculo)
     endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", url_default)
 
-    # Configura Traces
+    # Configuracao de Traces
     trace_exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)
     tracer_provider = TracerProvider(resource=resource)
     tracer_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
     trace.set_tracer_provider(tracer_provider)
 
-    # Configura Metricas
+    # Configuracao de Metricas
     metric_exporter = OTLPMetricExporter(endpoint=endpoint, insecure=True)
     metric_reader = PeriodicExportingMetricReader(
         metric_exporter, export_interval_millis=30000
@@ -40,7 +41,7 @@ def setup_otel(service_name: str):
     )
     metrics.set_meter_provider(meter_provider)
 
-    # Fundamental para o Mapa: Ativa a leitura do Trace ID
+    # Ativa a propagacao de contexto
     set_global_textmap(TraceContextPropagator())
 
     return trace.get_tracer(service_name)
