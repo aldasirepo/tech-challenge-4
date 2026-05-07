@@ -1,7 +1,7 @@
 import os
 from opentelemetry import trace, metrics
 from opentelemetry.propagate import set_global_textmap
-from opentelemetry.propagators.tracecontext import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.metrics import MeterProvider
@@ -17,31 +17,22 @@ def setup_otel(service_name: str):
         ResourceAttributes.DEPLOYMENT_ENVIRONMENT: os.getenv("ENV", "prod"),
     })
 
-    # IMPORTANTE: Removido o http:// pois o gRPC espera apenas o host:porta
-    url_default = (
-        "otel-collector-opentelemetry-collector"
-        ".monitoring.svc.cluster.local:4317"
-    )
-    # Garante o uso de os.getenv (minusculo)
+    url_default = "otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4317"
     endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", url_default)
 
-    # Configuracao de Traces
+    # Traces
     trace_exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)
     tracer_provider = TracerProvider(resource=resource)
     tracer_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
     trace.set_tracer_provider(tracer_provider)
 
-    # Configuracao de Metricas
+    # Metricas
     metric_exporter = OTLPMetricExporter(endpoint=endpoint, insecure=True)
-    metric_reader = PeriodicExportingMetricReader(
-        metric_exporter, export_interval_millis=30000
-    )
-    meter_provider = MeterProvider(
-        resource=resource, metric_readers=[metric_reader]
-    )
+    metric_reader = PeriodicExportingMetricReader(metric_exporter, export_interval_millis=30000)
+    meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
     metrics.set_meter_provider(meter_provider)
 
-    # Ativa a propagacao de contexto
+    # Ativa a propagacao usando o nome de classe correto
     set_global_textmap(TraceContextTextMapPropagator())
 
     return trace.get_tracer(service_name)
