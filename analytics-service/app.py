@@ -9,6 +9,7 @@ import boto3
 from botocore.exceptions import NoCredentialsError, ClientError
 from flask import Flask, jsonify
 from dotenv import load_dotenv
+from opentelemetry import propagate # Adicionado
 
 # Configura o logging
 logging.basicConfig(
@@ -57,32 +58,34 @@ except Exception as e:
 
 
 def process_message(message):
-    """Processa uma única mensagem SQS e a insere no DynamoDB."""
     try:
-        log.info(f"Processando mensagem ID: {message['MessageId']}")
-        body = json.loads(message["Body"])
+        # EXTRACAO DE CONTEXTO: Recupera o rastro vindo do Go
+        attributes = message.get("MessageAttributes", {})
+        carrier = {k: v["StringValue"] for k, v in attributes.items()}
+        context = propagate.extract(carrier)
 
-        # Gera um ID único para o item no DynamoDB
-        event_id = str(uuid.uuid4())
+        # Inicia o span dentro do rastro correto
+        with tracer.start_as_current_span("process_sqs_message", context=context):
+            log.info(f"Processando mensagem ID: {message['MessageId']}")
+            body = json.loads(message["Body"])
 
-        # Constrói o item no formato do DynamoDB
-        item = {
-            "event_id": {"S": event_id},
-            "user_id": {"S": body["user_id"]},
-            "flag_name": {"S": body["flag_name"]},
-            "result": {"BOOL": body["result"]},
-            "timestamp": {"S": body["timestamp"]},
-        }
+            event_id = str(uuid.uuid4())
+            item = {
+                "event_id": {"S": event_id},
+                "user_id": {"S": body["user_id"]},
+                "flag_name": {"S": body["flag_name"]},
+                "result": {"BOOL": body["result"]},
+                "timestamp": {"S": body["timestamp"]},
+            }
 
-        # Insere no DynamoDB
-        dynamodb_client.put_item(TableName=DYNAMODB_TABLE_NAME, Item=item)
+            dynamodb_client.put_item(TableName=DYNAMODB_TABLE_NAME, Item=item)
+            log.info(f"Evento {event_id} salvo no DynamoDB.")
 
-        log.info(f"Evento {event_id} (Flag: {body['flag_name']}) salvo no DynamoDB.")
-
-        # Se tudo deu certo, deleta a mensagem da fila
-        sqs_client.delete_message(
-            QueueUrl=SQS_QUEUE_URL, ReceiptHandle=message["ReceiptHandle"]
-        )
+            sqs_client.delete_message(
+                QueueUrl=SQS_QUEUE_URL, ReceiptHandle=message["ReceiptHandle"]
+            )
+    except Exception as e:
+        log.error(f"Erro ao processar {message['MessageId']}: {e}")
 
     except json.JSONDecodeError:
         log.error(f"Erro ao decodificar JSON da mensagem ID: {message['MessageId']}")
