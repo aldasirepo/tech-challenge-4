@@ -144,16 +144,20 @@ func (a *App) fetchFlag(ctx context.Context, flagName string) (*Flag, error) {
 func (a *App) fetchRule(ctx context.Context, flagName string) (*TargetingRule, error) {
 	url := fmt.Sprintf("%s/rules/%s", a.TargetingServiceURL, flagName)
 	apiKey := os.Getenv("SERVICE_API_KEY")
-	// http.NewRequestWithContext propaga ctx - otelhttp.Transport injeta header traceparent
+
+	// http.NewRequestWithContext propaga o ctx que contem o Trace ID
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao criar request: %v", err)
 	}
-	// Set peer.service for Datadog Service Map
+
+	// AJUSTE CRITICO PARA O MAPA: Define o destino correto no Datadog
 	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(attribute.String("peer.service", "flag-service"))
+	span.SetAttributes(attribute.String("peer.service", "targeting-service"))
+
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
+	// Utiliza o a.HttpClient que foi instrumentado com otelhttp no main.go
 	resp, err := a.HttpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("erro ao chamar targeting-service: %w", err)
