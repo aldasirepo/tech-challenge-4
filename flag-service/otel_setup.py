@@ -17,11 +17,12 @@ def setup_otel(service_name: str):
         ResourceAttributes.DEPLOYMENT_ENVIRONMENT: os.getenv("ENV", "prod"),
     })
 
-    # Ajustado para o nome completo do servico que vimos no seu kubectl
-    endpoint = os.getenv(
-        "OTEL_EXPORTER_OTLP_ENDPOINT",
-        "http://otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4317"
+    # Quebra de linha para satisfazer o linter (E501)
+    url_default = (
+        "http://otel-collector-opentelemetry-collector"
+        ".monitoring.svc.cluster.local:4317"
     )
+    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", url_default)
 
     # Configura Traces
     trace_exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)
@@ -31,11 +32,15 @@ def setup_otel(service_name: str):
 
     # Configura Metricas
     metric_exporter = OTLPMetricExporter(endpoint=endpoint, insecure=True)
-    metric_reader = PeriodicExportingMetricReader(metric_exporter, export_interval_millis=30000)
-    meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
+    metric_reader = PeriodicExportingMetricReader(
+        metric_exporter, export_interval_millis=30000
+    )
+    meter_provider = MeterProvider(
+        resource=resource, metric_readers=[metric_reader]
+    )
     metrics.set_meter_provider(meter_provider)
 
-    # ATENCAO: Esta linha permite "ligar" este servico ao rastro vindo do Go
+    # Fundamental para o Mapa: Ativa a leitura do Trace ID
     set_global_textmap(TraceContextPropagator())
 
     return trace.get_tracer(service_name)
