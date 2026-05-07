@@ -56,6 +56,7 @@ spec:
                 name: evaluation-service-db-secret-host #Credential to db login (host)
             - secretRef:
                 name: shared-api-key #ApiKey from k8s job
-            
-              
-              
+                
+          env:
+            - name: DD_TRACE_PEER_SERVICE_DEFAULTS_ENABLED
+              value: "true"
