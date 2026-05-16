@@ -6,8 +6,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 	"io"
 	"log"
 	"net/http"
@@ -78,15 +78,24 @@ func (a *App) fetchFromServices(ctx context.Context, flagName string) (*Combined
 	var flagErr, ruleErr error
 
 	// Goroutine 1: Buscar do flag-service
+	// Cada goroutine recebe seu próprio ctx com span filho
 	go func() {
 		defer wg.Done()
-		flagInfo, flagErr = a.fetchFlag(ctx, flagName)
+		tracer := otel.Tracer("evaluation-service")
+		flagCtx, flagSpan := tracer.Start(ctx, "call-flag-service")
+		flagSpan.SetAttributes(attribute.String("peer.service", "flag-service"))
+		defer flagSpan.End()
+		flagInfo, flagErr = a.fetchFlag(flagCtx, flagName)
 	}()
 
 	// Goroutine 2: Buscar do targeting-service
 	go func() {
 		defer wg.Done()
-		ruleInfo, ruleErr = a.fetchRule(ctx, flagName)
+		tracer := otel.Tracer("evaluation-service")
+		ruleCtx, ruleSpan := tracer.Start(ctx, "call-targeting-service")
+		ruleSpan.SetAttributes(attribute.String("peer.service", "targeting-service"))
+		defer ruleSpan.End()
+		ruleInfo, ruleErr = a.fetchRule(ruleCtx, flagName)
 	}()
 
 	wg.Wait()
@@ -114,9 +123,6 @@ func (a *App) fetchFlag(ctx context.Context, flagName string) (*Flag, error) {
 	if err != nil {
 		return nil, fmt.Errorf("erro ao criar request: %v", err)
 	}
-	// Set peer.service for Datadog Service Map
-	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(attribute.String("peer.service", "flag-service"))
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	resp, err := a.HttpClient.Do(req)
@@ -150,11 +156,6 @@ func (a *App) fetchRule(ctx context.Context, flagName string) (*TargetingRule, e
 	if err != nil {
 		return nil, fmt.Errorf("erro ao criar request: %v", err)
 	}
-
-	// AJUSTE CRITICO PARA O MAPA: Define o destino correto no Datadog
-	span := trace.SpanFromContext(ctx)
-	span.SetAttributes(attribute.String("peer.service", "targeting-service"))
-
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	// Utiliza o a.HttpClient que foi instrumentado com otelhttp no main.go
