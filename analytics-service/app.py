@@ -15,9 +15,9 @@ from otel_setup import setup_otel
 from opentelemetry.instrumentation.flask import FlaskInstrumentor 
 from opentelemetry.instrumentation.botocore import BotocoreInstrumentor 
 
-setup_otel("analytics-service")
+# Setup de metricas e traces OpenTelemetry
+tracer = setup_otel("analytics-service")
 BotocoreInstrumentor().instrument()
-tracer = trace.get_tracer("analytics-service")
 
 # Configura o logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -97,7 +97,7 @@ def sqs_worker_loop():
             time.sleep(10)
 
 app = Flask(__name__)
-FlaskInstrumentor().instrument_app(app)
+FlaskInstrumentor().instrument_app(app, excluded_urls="health")
 
 @app.route("/health")
 def health():
