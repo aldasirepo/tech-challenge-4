@@ -96,6 +96,7 @@ FlaskInstrumentor().instrument_app(app)
 
 @app.route("/health")
 def health():
+    log.info("Health check ping recebido")
     return jsonify({"status": "ok"})
 
 def start_worker():

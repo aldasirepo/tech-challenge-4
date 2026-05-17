@@ -22,5 +22,5 @@ ENV OTEL_PYTHON_LOG_CORRELATION=true
 
 EXPOSE 8005
 
-# Gunicorn roda com app:app. A instrumentação é feita manualmente no código (app.py) para evitar deadlocks de fork.
-CMD ["gunicorn", "--bind", "0.0.0.0:8005", "app:app"]
+# Usa o worker gthread para evitar que a thread em background do SQS bloqueie o worker síncrono
+CMD ["gunicorn", "--worker-class", "gthread", "--threads", "4", "--bind", "0.0.0.0:8005", "app:app"]
