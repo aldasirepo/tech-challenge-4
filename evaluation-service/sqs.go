@@ -42,6 +42,13 @@ func (a *App) sendEvaluationEvent(ctx context.Context, userID, flagName string, 
 	// Cria um span explícito para a publicação no SQS
 	tracer := otel.Tracer("evaluation-service")
 	pubCtx, pubSpan := tracer.Start(ctx, "sqs.publish", goOtelTrace.WithSpanKind(goOtelTrace.SpanKindProducer))
+	
+	// Adiciona convenções semânticas para o Datadog conectar a fila
+	pubSpan.SetAttributes(
+		attribute.String("messaging.system", "aws_sqs"),
+		attribute.String("messaging.destination.name", a.SqsQueueURL),
+		attribute.String("messaging.operation", "publish"),
+	)
 	defer pubSpan.End()
 
 	// Injeta o rastro (trace) nos atributos da mensagem usando MapCarrier

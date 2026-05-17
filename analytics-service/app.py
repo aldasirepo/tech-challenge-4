@@ -56,7 +56,10 @@ def process_message(message):
             "process_sqs_message",
             context=context,
             kind=trace.SpanKind.CONSUMER,
-        ):
+        ) as span:
+            span.set_attribute("messaging.system", "aws_sqs")
+            span.set_attribute("messaging.destination.name", SQS_QUEUE_URL)
+            span.set_attribute("messaging.operation", "process")
             log.info(f"Processando mensagem ID: {message['MessageId']}")
             body = json.loads(message["Body"])
             event_id = str(uuid.uuid4())
