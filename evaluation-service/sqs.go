@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
+	goOtelTrace "go.opentelemetry.io/otel/trace"
 )
 
 type EvaluationEvent struct {
@@ -38,10 +39,15 @@ func (a *App) sendEvaluationEvent(ctx context.Context, userID, flagName string, 
 		return
 	}
 
+	// Cria um span explícito para a publicação no SQS
+	tracer := otel.Tracer("evaluation-service")
+	pubCtx, pubSpan := tracer.Start(ctx, "sqs.publish", goOtelTrace.WithSpanKind(goOtelTrace.SpanKindProducer))
+	defer pubSpan.End()
+
 	// Injeta o rastro (trace) nos atributos da mensagem usando MapCarrier
 	messageAttributes := make(map[string]*sqs.MessageAttributeValue)
 	carrier := make(map[string]string)
-	otel.GetTextMapPropagator().Inject(ctx, propagation.MapCarrier(carrier))
+	otel.GetTextMapPropagator().Inject(pubCtx, propagation.MapCarrier(carrier))
 
 	for k, v := range carrier {
 		messageAttributes[k] = &sqs.MessageAttributeValue{

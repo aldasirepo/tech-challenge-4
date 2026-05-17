@@ -52,7 +52,11 @@ def process_message(message):
         carrier = {k: v["StringValue"] for k, v in attributes.items()}
         context = propagate.extract(carrier)
 
-        with tracer.start_as_current_span("process_sqs_message", context=context):
+        with tracer.start_as_current_span(
+            "process_sqs_message",
+            context=context,
+            kind=trace.SpanKind.CONSUMER,
+        ):
             log.info(f"Processando mensagem ID: {message['MessageId']}")
             body = json.loads(message["Body"])
             event_id = str(uuid.uuid4())

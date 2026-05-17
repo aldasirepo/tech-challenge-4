@@ -12,6 +12,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -115,7 +116,8 @@ func (a *App) fetchFromServices(ctx context.Context, flagName string) (*Combined
 
 // fetchFlag busca uma flag do flag-service propagando o trace via context
 func (a *App) fetchFlag(ctx context.Context, flagName string) (*Flag, error) {
-	url := fmt.Sprintf("%s/flags/%s", a.FlagServiceURL, flagName)
+	cleanURL := strings.TrimSpace(a.FlagServiceURL)
+	url := fmt.Sprintf("%s/flags/%s", cleanURL, flagName)
 
 	apiKey := os.Getenv("SERVICE_API_KEY")
 	// http.NewRequestWithContext propaga ctx - otelhttp.Transport injeta header traceparent
@@ -148,7 +150,8 @@ func (a *App) fetchFlag(ctx context.Context, flagName string) (*Flag, error) {
 
 // fetchRule busca uma regra do targeting-service propagando o trace via context
 func (a *App) fetchRule(ctx context.Context, flagName string) (*TargetingRule, error) {
-	url := fmt.Sprintf("%s/rules/%s", a.TargetingServiceURL, flagName)
+	cleanURL := strings.TrimSpace(a.TargetingServiceURL)
+	url := fmt.Sprintf("%s/rules/%s", cleanURL, flagName)
 	apiKey := os.Getenv("SERVICE_API_KEY")
 
 	// http.NewRequestWithContext propaga o ctx que contem o Trace ID
