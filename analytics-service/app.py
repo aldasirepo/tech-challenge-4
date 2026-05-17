@@ -50,6 +50,7 @@ def process_message(message):
         # Extracao de contexto para o rastro distribuido
         attributes = message.get("MessageAttributes", {})
         carrier = {k: v["StringValue"] for k, v in attributes.items()}
+        log.info(f"Carrier extraido do SQS: {carrier}")
         context = propagate.extract(carrier)
 
         with tracer.start_as_current_span(
