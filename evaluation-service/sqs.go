@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -44,10 +45,14 @@ func (a *App) sendEvaluationEvent(ctx context.Context, userID, flagName string, 
 	tracer := otel.Tracer("evaluation-service")
 	pubCtx, pubSpan := tracer.Start(ctx, "sqs.publish", goOtelTrace.WithSpanKind(goOtelTrace.SpanKindProducer))
 	
+	// Extrai apenas o nome da fila da URL para bater com o formato do Botocore no Python
+	queueParts := strings.Split(a.SqsQueueURL, "/")
+	queueName := queueParts[len(queueParts)-1]
+
 	// Adiciona convenções semânticas para o Datadog conectar a fila
 	pubSpan.SetAttributes(
 		attribute.String("messaging.system", "aws_sqs"),
-		attribute.String("messaging.destination.name", a.SqsQueueURL),
+		attribute.String("messaging.destination.name", queueName),
 		attribute.String("messaging.operation", "publish"),
 	)
 	defer pubSpan.End()
