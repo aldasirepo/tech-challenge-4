@@ -22,5 +22,5 @@ ENV OTEL_PYTHON_LOG_CORRELATION=true
 
 EXPOSE 8005
 
-# opentelemetry-instrument ativa instrumentação automática (Flask, botocore para SQS/DynamoDB)
-CMD ["opentelemetry-instrument", "gunicorn", "--bind", "0.0.0.0:8005", "app:app"]
+# Gunicorn roda com app:app. A instrumentação é feita manualmente no código (app.py) para evitar deadlocks de fork.
+CMD ["gunicorn", "--bind", "0.0.0.0:8005", "app:app"]
