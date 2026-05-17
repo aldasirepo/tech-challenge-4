@@ -56,6 +56,8 @@ spec:
                 name: evaluation-service-db-secret-host #Credential to db login (host)
             - secretRef:
                 name: shared-api-key #ApiKey from k8s job
+            - secretRef:
+                name: analytics-service-db-secret # Injected to provide AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
                 
           env:
             - name: DD_TRACE_PEER_SERVICE_DEFAULTS_ENABLED
